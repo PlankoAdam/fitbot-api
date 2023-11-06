@@ -1,2 +1,3 @@
 /.vscode
 *.guff
+app/llms/llama-2-7b.Q4_K_M.gguf
