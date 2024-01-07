@@ -1,11 +1,11 @@
 from langchain.llms import llamacpp
 from langchain.prompts import PromptTemplate
 from langchain.chains import ConversationChain
-from langchain.memory import ConversationTokenBufferMemory, ConversationBufferWindowMemory
+from langchain.memory import ConversationBufferWindowMemory
 # from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 
-model = llamacpp.LlamaCpp(model_path='llms/llama-2-7b.Q4_K_M.gguf',
+model = llamacpp.LlamaCpp(model_path='app/llms/llama-2-7b.Q4_K_M.gguf',
                         temperature=0.5,
                         max_tokens=1024,
                         stop=['Human:'],

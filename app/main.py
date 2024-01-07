@@ -7,15 +7,15 @@ app = Flask(__name__)
 lastUserMessage = ""
 lastResponse = ""
 
-@app.route("/generate-response", methods=["GET"])
+@app.route("/generate-response", methods=["POST"])
 def generateResponse():
     lastUserMessage = request.get_json()["message"]
     lastResponse = generate(lastUserMessage)
     return jsonify({"bot-response": lastResponse}), 200
 
-@app.route("/get-last-response")
+@app.route("/get-last-response", methods=["GET"])
 def getLastResponse():
-    return jsonify({"bot-response": lastResponse}), 200
+    return jsonify({"user-message": lastUserMessage, "bot-response": lastResponse}), 200
 
 @app.route("/delete-history", methods=["DELETE"])
 def deleteHistory():
