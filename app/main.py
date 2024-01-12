@@ -1,5 +1,13 @@
 from flask import Flask, request, jsonify
-from chatbot import generate, clearHistory
+from flask_cors import CORS
+from werkzeug.utils import secure_filename
+import os
+from chatbot import loadFile,processPDF,answer,getContext
+from waitress import serve
+import logging
+
+logger = logging.getLogger('waitress')
+logger.setLevel(logging.INFO)
 
 app = Flask(__name__)
 
@@ -7,20 +15,34 @@ app = Flask(__name__)
 lastUserMessage = ""
 lastResponse = ""
 
-@app.route("/generate-response", methods=["POST"])
-def generateResponse():
-    lastUserMessage = request.get_json()["message"]
-    lastResponse = generate(lastUserMessage)
-    return jsonify({"bot-response": lastResponse}), 200
+cors = CORS()
+cors.init_app(app, resource={r"/api/*": {"origins": "*"}})
 
-@app.route("/get-last-response", methods=["GET"])
-def getLastResponse():
-    return jsonify({"user-message": lastUserMessage, "bot-response": lastResponse}), 200
+@app.route('/process', methods=['POST'])
+def process():
+    for fname in request.files:
+        f = request.files.get(fname)
+        secfname = secure_filename(fname)
+        f.save('./uploads/%s' % secfname)
 
-@app.route("/delete-history", methods=["DELETE"])
-def deleteHistory():
-    clearHistory()
-    return "", 200
+        if f.content_type == 'application/pdf':
+            chunks = processPDF(secfname)
+            return jsonify({"chunks": chunks}), 200
+        elif f.content_type == 'text/plain':
+            loadFile(secfname)
+            return 'ok', 200
+
+    return 'wrong file type', 400
+
+@app.route('/answer', methods=['POST'])
+def askQuery():
+    query = request.get_json()["query"]
+    chunks = request.get_json()["chunks"]
+    ctx = getContext(chunks, query)
+    result = answer(ctx, query)
+    return jsonify({"answer": result, "context": ctx}), 200
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    if not os.path.exists('./uploads'):
+        os.mkdir('./uploads')
+    serve(app, host="0.0.0.0", port=5000, threads=1)
