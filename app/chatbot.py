@@ -36,10 +36,15 @@ splitter = RecursiveCharacterTextSplitter(
     chunk_size=300, chunk_overlap=0, separators=['.', '?', '!']
 )
 
-def loadFile(fname):
+def split(text):
+    chunks = splitter.split_text(text=text)
+    return chunks
+
+def processTXT(fname):
     f = open('./uploads/%s' % fname, 'r', encoding="utf-8");
-    print(f.read())
+    text = f.read()
     f.close()
+    return split(text)
 
 def processPDF(fname):
     f = open('./uploads/%s' % fname, 'rb')
@@ -48,10 +53,7 @@ def processPDF(fname):
     for page in pdf.pages:
         text += page.extract_text()
     f.close()
-
-    chunks = splitter.split_text(text=text)
-
-    return chunks
+    return split(text)
 
 def getContext(textChunks, query):
     db = FAISS.from_texts(textChunks, embedding=embedder)

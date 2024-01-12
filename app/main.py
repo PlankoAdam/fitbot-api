@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
-from chatbot import loadFile,processPDF,answer,getContext
+from chatbot import processTXT,processPDF,answer,getContext
 from waitress import serve
 import logging
 
@@ -25,14 +25,20 @@ def process():
         secfname = secure_filename(fname)
         f.save('./uploads/%s' % secfname)
 
-        if f.content_type == 'application/pdf':
-            chunks = processPDF(secfname)
-            return jsonify({"chunks": chunks}), 200
-        elif f.content_type == 'text/plain':
-            loadFile(secfname)
-            return 'ok', 200
+        if (f.content_type == 'application/pdf') | (f.content_type == 'text/plain'):
+            chunks = []
 
-    return 'wrong file type', 400
+            if f.content_type == 'application/pdf':
+                chunks = processPDF(secfname)
+            elif f.content_type == 'text/plain':
+                chunks = processTXT(secfname)
+
+            if os.path.exists('./uploads/%s' % secfname):
+                os.remove('./uploads/%s' % secfname)
+
+            return jsonify({"chunks": chunks}), 200
+
+        return 'wrong file type', 400
 
 @app.route('/answer', methods=['POST'])
 def askQuery():
@@ -45,4 +51,4 @@ def askQuery():
 if __name__ == "__main__":
     if not os.path.exists('./uploads'):
         os.mkdir('./uploads')
-    serve(app, host="0.0.0.0", port=5000, threads=1)
+    serve(app, host="0.0.0.0", port=5000, threads=2)
