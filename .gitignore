@@ -3,3 +3,4 @@
 app/llms/*
 app/__pycache__/
 app/uploads/
+/venv/

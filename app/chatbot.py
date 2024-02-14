@@ -1,14 +1,17 @@
 from langchain_community.llms import llamacpp
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores.faiss import FAISS
 from langchain_core.output_parsers import StrOutputParser
 from PyPDF2 import PdfReader
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain.memory import ConversationBufferMemory
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
+from operator import itemgetter
 
 model = llamacpp.LlamaCpp(
-    model_path='./llms/mistral-7b-instruct-v0.1.Q4_K_M.gguf',
-    temperature=0.1,
+    model_path="app/llms/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
+    temperature=0,
     max_tokens=1500,
     stop=['\n'],
     verbose=True,
@@ -23,17 +26,21 @@ embedder = HuggingFaceBgeEmbeddings(
     query_instruction="Represent this sentence for searching relevant passages:"
 )
 
-template = """[INST]Answer the question based only on the following context. If the question can't be answered based on the context, say that you are unable to answer the question:
-'...{context}...'
+template = """[INST]You are a chatbot having a conversation with a human.
+Given the following extracted parts of a long document and a question, create a final answer.
+Context:
+'...{context}...'[/INST]
 
-Question: {question}[/INST]
-Answer:
-"""
+{history}
+Human: {human}
+Chatbot:"""
 
-prompt = ChatPromptTemplate.from_template(template)
+prompt = PromptTemplate(template=template, input_variables=["context", "history", "human"])
+
+memory = ConversationBufferMemory(memory_key="history", input_key="human")
 
 splitter = RecursiveCharacterTextSplitter(
-    chunk_size=300, chunk_overlap=0, separators=['.', '?', '!']
+    chunk_size=300, chunk_overlap=150, separators=['.', '?', '!']
 )
 
 def split(text):
@@ -62,5 +69,7 @@ def getContext(textChunks, query):
     return retriever_result[0].page_content
 
 def answer(context, query):
-    chain =  prompt | model | StrOutputParser()
-    return chain.invoke({"context": context, "question": query})
+    chain =  RunnablePassthrough.assign(
+        history=RunnableLambda(memory.load_memory_variables) | itemgetter("history")
+    ) | prompt | model | StrOutputParser()
+    return chain.invoke({"context": context, "human": query})
