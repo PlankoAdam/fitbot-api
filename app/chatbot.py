@@ -1,5 +1,5 @@
 from langchain_community.llms import llamacpp
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores.faiss import FAISS
 from langchain_core.output_parsers import StrOutputParser
@@ -43,6 +43,23 @@ splitter = RecursiveCharacterTextSplitter(
     chunk_size=300, chunk_overlap=150, separators=['.', '?', '!']
 )
 
+contextualize_q_system_prompt = """Given a chat history and the latest user question \
+which might reference context in the chat history, formulate a standalone question \
+which can be understood without the chat history. Do NOT answer the question, \
+just reformulate it if needed and otherwise return it as is."""
+contextualize_q_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", contextualize_q_system_prompt),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{human}"),
+    ]
+)
+contextualize_q_chain = contextualize_q_prompt | model | StrOutputParser()
+
+rag_chain =  RunnablePassthrough.assign(
+        history=RunnableLambda(memory.load_memory_variables) | itemgetter("history")
+    ) | prompt | model | StrOutputParser()
+
 def split(text):
     chunks = splitter.split_text(text=text)
     return chunks
@@ -65,11 +82,24 @@ def processPDF(fname):
 def getContext(textChunks, query):
     db = FAISS.from_texts(textChunks, embedding=embedder)
     retriever = db.as_retriever()
-    retriever_result = retriever.invoke(query)
+
+    print('msgs:')
+    print(*memory.buffer_as_messages, sep = '\n')
+    print('msgs len: ' + str(len(memory.buffer_as_messages)))
+    if (len(memory.buffer_as_messages) > 0):
+        standalone_q = contextualize_q_chain.invoke({
+            "history": memory.buffer_as_messages,
+             "human": query
+        })
+    else:
+        standalone_q = query
+
+    print('standalone q: ' + standalone_q)
+    retriever_result = retriever.invoke(standalone_q)
     return retriever_result[0].page_content
 
 def answer(context, query):
-    chain =  RunnablePassthrough.assign(
-        history=RunnableLambda(memory.load_memory_variables) | itemgetter("history")
-    ) | prompt | model | StrOutputParser()
-    return chain.invoke({"context": context, "human": query})
+    print('ctx: ' + context)
+    print('memory: ' + memory.buffer_as_str)
+    
+    return rag_chain.invoke({"context": context, "human": query})
