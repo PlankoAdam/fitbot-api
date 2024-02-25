@@ -8,6 +8,7 @@ from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from operator import itemgetter
+from langchain_core.messages import AIMessage, HumanMessage
 
 model = llamacpp.LlamaCpp(
     model_path="app/llms/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
@@ -31,13 +32,10 @@ Given the following extracted parts of a long document and a question, create a 
 Context:
 '...{context}...'[/INST]
 
-{history}
 Human: {human}
 Chatbot:"""
 
-prompt = PromptTemplate(template=template, input_variables=["context", "history", "human"])
-
-memory = ConversationBufferMemory(memory_key="history", input_key="human")
+prompt = PromptTemplate(template=template, input_variables=["context", "human"])
 
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=300, chunk_overlap=150, separators=['.', '?', '!']
@@ -56,9 +54,7 @@ contextualize_q_prompt = ChatPromptTemplate.from_messages(
 )
 contextualize_q_chain = contextualize_q_prompt | model | StrOutputParser()
 
-rag_chain =  RunnablePassthrough.assign(
-        history=RunnableLambda(memory.load_memory_variables) | itemgetter("history")
-    ) | prompt | model | StrOutputParser()
+rag_chain = prompt | model | StrOutputParser()
 
 def split(text):
     chunks = splitter.split_text(text=text)
@@ -79,16 +75,22 @@ def processPDF(fname):
     f.close()
     return split(text)
 
-def getContext(textChunks, query):
+def getContext(textChunks, query, msgs):
     db = FAISS.from_texts(textChunks, embedding=embedder)
     retriever = db.as_retriever()
 
     print('msgs:')
-    print(*memory.buffer_as_messages, sep = '\n')
-    print('msgs len: ' + str(len(memory.buffer_as_messages)))
-    if (len(memory.buffer_as_messages) > 0):
+    print(*msgs, sep = '\n')
+    print('msgs len: ' + str(len(msgs)))
+    if (len(msgs) > 1):
+        history = []
+        for i in range(len(msgs)):
+            if(i%2 == 0):
+                history.append(HumanMessage(content=msgs[i]))
+            else:
+                history.append(AIMessage(content=msgs[i]))
         standalone_q = contextualize_q_chain.invoke({
-            "history": memory.buffer_as_messages,
+            "history": history,
              "human": query
         })
     else:
@@ -98,8 +100,9 @@ def getContext(textChunks, query):
     retriever_result = retriever.invoke(standalone_q)
     return retriever_result[0].page_content
 
-def answer(context, query):
-    print('ctx: ' + context)
-    print('memory: ' + memory.buffer_as_str)
-    
-    return rag_chain.invoke({"context": context, "human": query})
+def answer(textChunks, query, msgs):
+    ctx = getContext(textChunks, query,msgs);
+    print('ctx: ' + ctx)
+
+    ans = rag_chain.invoke({"context": ctx, "human": query})
+    return {"answer": ans, "context": ctx}

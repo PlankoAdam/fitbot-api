@@ -44,9 +44,9 @@ def process():
 def askQuery():
     query = request.get_json()["query"]
     chunks = request.get_json()["chunks"]
-    ctx = getContext(chunks, query)
-    result = answer(ctx, query)
-    return jsonify({"answer": result, "context": ctx}), 200
+    msgs = request.get_json()["msgs"]
+    result = answer(chunks, query, msgs)
+    return jsonify(result), 200
 
 if __name__ == "__main__":
     if not os.path.exists('./uploads'):
